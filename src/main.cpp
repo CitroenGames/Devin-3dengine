@@ -21,6 +21,10 @@ void processInput(GLFWwindow *window)
         glfwSetWindowShouldClose(window, true);
 }
 
+void error_callback(int error, const char* description) {
+    std::cerr << "GLFW Error " << error << ": " << description << std::endl;
+}
+
 int main(int argc, char* argv[])
 {
     bool test_mode = (argc > 1 && std::string(argv[1]) == "--test");
@@ -35,11 +39,26 @@ int main(int argc, char* argv[])
 
     // Initialize GLFW in regular mode only
     if (!test_mode) {
-        glfwInit();
+        glfwSetErrorCallback(error_callback);
+        if (!glfwInit()) {
+            std::cerr << "Failed to initialize GLFW. Falling back to test mode." << std::endl;
+            test_mode = true;
+            goto test_mode_start;
+        }
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+
+        // Check for display environment
+        const char* xdg_runtime = std::getenv("XDG_RUNTIME_DIR");
+        const char* display = std::getenv("DISPLAY");
+        if (!xdg_runtime || !display) {
+            std::cout << "No display environment detected. Falling back to test mode." << std::endl;
+            test_mode = true;
+            glfwTerminate();
+            goto test_mode_start;
+        }
 
         window = glfwCreateWindow(800, 600, "3D Engine", NULL, NULL);
         if (window == NULL)
@@ -57,9 +76,20 @@ int main(int argc, char* argv[])
             return -1;
         }
 
+        // Check OpenGL version
+        int majorVersion, minorVersion;
+        glGetIntegerv(GL_MAJOR_VERSION, &majorVersion);
+        glGetIntegerv(GL_MINOR_VERSION, &minorVersion);
+        if (majorVersion < 3 || (majorVersion == 3 && minorVersion < 3)) {
+            std::cerr << "OpenGL 3.3 not supported. Got " << majorVersion << "." << minorVersion << std::endl;
+            glfwTerminate();
+            return -1;
+        }
+
         glEnable(GL_DEPTH_TEST);
     }
 
+test_mode_start:
     try {
         std::cout << "Testing core components..." << std::endl;
 
@@ -113,39 +143,44 @@ int main(int argc, char* argv[])
 
         while(!glfwWindowShouldClose(window))
         {
-            processInput(window);
+            try {
+                processInput(window);
 
-            shadowMap.bindFramebuffer();
-            glClear(GL_DEPTH_BUFFER_BIT);
+                shadowMap.bindFramebuffer();
+                glClear(GL_DEPTH_BUFFER_BIT);
 
-            shadowShader->use();
-            glm::mat4 model = glm::mat4(1.0f);
-            model = glm::rotate(model, (float)glfwGetTime(), glm::vec3(0.0f, 1.0f, 0.0f));
-            shadowShader->setMat4("lightSpaceMatrix", shadowMap.getLightSpaceMatrix());
-            shadowShader->setMat4("model", model);
+                shadowShader->use();
+                glm::mat4 model = glm::mat4(1.0f);
+                model = glm::rotate(model, (float)glfwGetTime(), glm::vec3(0.0f, 1.0f, 0.0f));
+                shadowShader->setMat4("lightSpaceMatrix", shadowMap.getLightSpaceMatrix());
+                shadowShader->setMat4("model", model);
 
-            ourModel->Draw(*shadowShader);
+                ourModel->Draw(*shadowShader);
 
-            shadowMap.unbindFramebuffer();
+                shadowMap.unbindFramebuffer();
 
-            glViewport(0, 0, 800, 600);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                glViewport(0, 0, 800, 600);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            shader->use();
-            shader->setMat4("projection", projection);
-            shader->setMat4("view", view);
-            shader->setMat4("model", model);
-            shader->setMat4("lightSpaceMatrix", shadowMap.getLightSpaceMatrix());
-            shader->setVec3("lightPos", lightPos);
-            shader->setVec3("viewPos", glm::vec3(0.0f, 0.0f, -3.0f));
+                shader->use();
+                shader->setMat4("projection", projection);
+                shader->setMat4("view", view);
+                shader->setMat4("model", model);
+                shader->setMat4("lightSpaceMatrix", shadowMap.getLightSpaceMatrix());
+                shader->setVec3("lightPos", lightPos);
+                shader->setVec3("viewPos", glm::vec3(0.0f, 0.0f, -3.0f));
 
-            shadowMap.bindDepthMap(1);
-            shader->setInt("shadowMap", 1);
+                shadowMap.bindDepthMap(1);
+                shader->setInt("shadowMap", 1);
 
-            ourModel->Draw(*shader);
+                ourModel->Draw(*shader);
 
-            glfwSwapBuffers(window);
-            glfwPollEvents();
+                glfwSwapBuffers(window);
+                glfwPollEvents();
+            } catch (const std::exception& e) {
+                std::cerr << "Error processing frame: " << e.what() << std::endl;
+                break;
+            }
         }
 
         delete shader;
