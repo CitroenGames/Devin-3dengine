@@ -9,12 +9,13 @@
 
 class Model {
 public:
-    Model(const char* path);
+    Model(const char* path, bool test_mode = false);
     void Draw(Shader &shader);
 private:
     std::vector<Mesh> meshes;
     std::string directory;
     std::vector<Texture> textures_loaded;
+    bool test_mode;
 
     void loadModel(std::string path);
     void processNode(aiNode *node, const aiScene *scene);

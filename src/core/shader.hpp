@@ -6,7 +6,7 @@
 
 class Shader {
 public:
-    Shader(const char* vertexPath, const char* fragmentPath);
+    Shader(const char* vertexPath, const char* fragmentPath, bool test_mode = false);
     ~Shader();
 
     void use();
@@ -19,7 +19,9 @@ public:
 private:
     unsigned int ID;
     std::unordered_map<std::string, int> uniformLocationCache;
+    bool test_mode;
 
     void checkCompileErrors(unsigned int shader, std::string type);
     int getUniformLocation(const std::string &name);
+    bool validateShaderFile(const char* path);
 };

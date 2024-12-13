@@ -4,15 +4,17 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-Model::Model(const char* path)
+Model::Model(const char* path, bool test_mode) : test_mode(test_mode)
 {
     loadModel(path);
 }
 
 void Model::Draw(Shader &shader)
 {
-    for(unsigned int i = 0; i < meshes.size(); i++)
-        meshes[i].Draw(shader);
+    if (!test_mode) {
+        for(unsigned int i = 0; i < meshes.size(); i++)
+            meshes[i].Draw(shader);
+    }
 }
 
 void Model::loadModel(std::string path)
@@ -22,8 +24,7 @@ void Model::loadModel(std::string path)
 
     if(!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
     {
-        std::cout << "ERROR::ASSIMP::" << importer.GetErrorString() << std::endl;
-        return;
+        throw std::runtime_error("ERROR::ASSIMP::" + std::string(importer.GetErrorString()));
     }
     directory = path.substr(0, path.find_last_of('/'));
 
@@ -32,13 +33,11 @@ void Model::loadModel(std::string path)
 
 void Model::processNode(aiNode *node, const aiScene *scene)
 {
-    // process all the node's meshes (if any)
     for(unsigned int i = 0; i < node->mNumMeshes; i++)
     {
         aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
         meshes.push_back(processMesh(mesh, scene));
     }
-    // then do the same for each of its children
     for(unsigned int i = 0; i < node->mNumChildren; i++)
     {
         processNode(node->mChildren[i], scene);
@@ -54,7 +53,6 @@ Mesh Model::processMesh(aiMesh *mesh, const aiScene *scene)
     for(unsigned int i = 0; i < mesh->mNumVertices; i++)
     {
         Vertex vertex;
-        // process vertex positions, normals and texture coordinates
         glm::vec3 vector;
         vector.x = mesh->mVertices[i].x;
         vector.y = mesh->mVertices[i].y;
@@ -66,7 +64,7 @@ Mesh Model::processMesh(aiMesh *mesh, const aiScene *scene)
         vector.z = mesh->mNormals[i].z;
         vertex.Normal = vector;
 
-        if(mesh->mTextureCoords[0]) // does the mesh contain texture coordinates?
+        if(mesh->mTextureCoords[0])
         {
             glm::vec2 vec;
             vec.x = mesh->mTextureCoords[0][i].x;
@@ -78,15 +76,13 @@ Mesh Model::processMesh(aiMesh *mesh, const aiScene *scene)
 
         vertices.push_back(vertex);
     }
-    // process indices
     for(unsigned int i = 0; i < mesh->mNumFaces; i++)
     {
         aiFace face = mesh->mFaces[i];
         for(unsigned int j = 0; j < face.mNumIndices; j++)
             indices.push_back(face.mIndices[j]);
     }
-    // process material
-    if(mesh->mMaterialIndex >= 0)
+    if(mesh->mMaterialIndex >= 0 && !test_mode)
     {
         aiMaterial *material = scene->mMaterials[mesh->mMaterialIndex];
         std::vector<Texture> diffuseMaps = loadMaterialTextures(material,
@@ -97,12 +93,14 @@ Mesh Model::processMesh(aiMesh *mesh, const aiScene *scene)
         textures.insert(textures.end(), specularMaps.begin(), specularMaps.end());
     }
 
-    return Mesh(vertices, indices, textures);
+    return Mesh(vertices, indices, textures, test_mode);
 }
 
 std::vector<Texture> Model::loadMaterialTextures(aiMaterial *mat, aiTextureType type, std::string typeName)
 {
     std::vector<Texture> textures;
+    if (test_mode) return textures;
+
     for(unsigned int i = 0; i < mat->GetTextureCount(type); i++)
     {
         aiString str;
@@ -118,13 +116,13 @@ std::vector<Texture> Model::loadMaterialTextures(aiMaterial *mat, aiTextureType 
             }
         }
         if(!skip)
-        {   // if texture hasn't been loaded already, load it
+        {
             Texture texture;
             texture.id = TextureFromFile(str.C_Str(), directory);
             texture.type = typeName;
             texture.path = str.C_Str();
             textures.push_back(texture);
-            textures_loaded.push_back(texture); // add to loaded textures
+            textures_loaded.push_back(texture);
         }
     }
     return textures;
@@ -132,9 +130,9 @@ std::vector<Texture> Model::loadMaterialTextures(aiMaterial *mat, aiTextureType 
 
 unsigned int Model::TextureFromFile(const char *path, const std::string &directory)
 {
-    std::string filename = std::string(path);
-    filename = directory + '/' + filename;
+    if (test_mode) return 0;
 
+    std::string filename = directory + '/' + std::string(path);
     unsigned int textureID;
     glGenTextures(1, &textureID);
 

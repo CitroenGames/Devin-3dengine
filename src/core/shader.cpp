@@ -5,7 +5,31 @@
 #include <iostream>
 #include <glm/gtc/type_ptr.hpp>
 
-Shader::Shader(const char* vertexPath, const char* fragmentPath) {
+bool Shader::validateShaderFile(const char* path) {
+    std::ifstream shaderFile;
+    shaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
+    try {
+        shaderFile.open(path);
+        std::stringstream shaderStream;
+        shaderStream << shaderFile.rdbuf();
+        shaderFile.close();
+        return true;
+    }
+    catch(std::ifstream::failure& e) {
+        std::cout << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << path << std::endl;
+        return false;
+    }
+}
+
+Shader::Shader(const char* vertexPath, const char* fragmentPath, bool test_mode) : test_mode(test_mode) {
+    if (test_mode) {
+        if (!validateShaderFile(vertexPath) || !validateShaderFile(fragmentPath)) {
+            throw std::runtime_error("Failed to validate shader files");
+        }
+        ID = 0;
+        return;
+    }
+
     std::string vertexCode;
     std::string fragmentCode;
     std::ifstream vShaderFile;
@@ -27,9 +51,10 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath) {
         vertexCode = vShaderStream.str();
         fragmentCode = fShaderStream.str();
     }
-    catch(std::ifstream::failure e) {
-        std::cout << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ" << std::endl;
+    catch(std::ifstream::failure& e) {
+        throw std::runtime_error("ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ");
     }
+
     const char* vShaderCode = vertexCode.c_str();
     const char* fShaderCode = fragmentCode.c_str();
 
@@ -55,30 +80,44 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath) {
 }
 
 void Shader::use() {
-    glUseProgram(ID);
+    if (!test_mode) {
+        glUseProgram(ID);
+    }
 }
 
 void Shader::setBool(const std::string &name, bool value) const {
-    glUniform1i(glGetUniformLocation(ID, name.c_str()), (int)value);
+    if (!test_mode) {
+        glUniform1i(glGetUniformLocation(ID, name.c_str()), (int)value);
+    }
 }
 
 void Shader::setInt(const std::string &name, int value) const {
-    glUniform1i(glGetUniformLocation(ID, name.c_str()), value);
+    if (!test_mode) {
+        glUniform1i(glGetUniformLocation(ID, name.c_str()), value);
+    }
 }
 
 void Shader::setFloat(const std::string &name, float value) const {
-    glUniform1f(glGetUniformLocation(ID, name.c_str()), value);
+    if (!test_mode) {
+        glUniform1f(glGetUniformLocation(ID, name.c_str()), value);
+    }
 }
 
 void Shader::setVec3(const std::string &name, const glm::vec3 &value) const {
-    glUniform3fv(glGetUniformLocation(ID, name.c_str()), 1, &value[0]);
+    if (!test_mode) {
+        glUniform3fv(glGetUniformLocation(ID, name.c_str()), 1, &value[0]);
+    }
 }
 
 void Shader::setMat4(const std::string &name, const glm::mat4 &mat) const {
-    glUniform4fv(glGetUniformLocation(ID, name.c_str()), 1, glm::value_ptr(mat));
+    if (!test_mode) {
+        glUniformMatrix4fv(glGetUniformLocation(ID, name.c_str()), 1, GL_FALSE, glm::value_ptr(mat));
+    }
 }
 
 int Shader::getUniformLocation(const std::string &name) {
+    if (test_mode) return -1;
+
     if (uniformLocationCache.find(name) != uniformLocationCache.end())
         return uniformLocationCache[name];
 
@@ -88,24 +127,28 @@ int Shader::getUniformLocation(const std::string &name) {
 }
 
 void Shader::checkCompileErrors(unsigned int shader, std::string type) {
+    if (test_mode) return;
+
     int success;
     char infoLog[1024];
     if (type != "PROGRAM") {
         glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
         if (!success) {
             glGetShaderInfoLog(shader, 1024, NULL, infoLog);
-            std::cout << "ERROR::SHADER_COMPILATION_ERROR of type: " << type << "\n" << infoLog << std::endl;
+            throw std::runtime_error("ERROR::SHADER_COMPILATION_ERROR of type: " + type + "\n" + infoLog);
         }
     }
     else {
         glGetProgramiv(shader, GL_LINK_STATUS, &success);
         if (!success) {
             glGetProgramInfoLog(shader, 1024, NULL, infoLog);
-            std::cout << "ERROR::PROGRAM_LINKING_ERROR of type: " << type << "\n" << infoLog << std::endl;
+            throw std::runtime_error("ERROR::PROGRAM_LINKING_ERROR of type: " + type + "\n" + infoLog);
         }
     }
 }
 
 Shader::~Shader() {
-    glDeleteProgram(ID);
+    if (!test_mode && ID != 0) {
+        glDeleteProgram(ID);
+    }
 }
