@@ -7,6 +7,7 @@
 
 #include "core/shader.hpp"
 #include "core/model.hpp"
+#include "rendering/shadow_map.hpp"
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
@@ -51,35 +52,55 @@ int main()
 
     // Create and compile shaders
     Shader shader("assets/shaders/basic.vert", "assets/shaders/basic.frag");
+    Shader shadowShader("assets/shaders/shadow_map.vert", "assets/shaders/shadow_map.frag");
 
     // Load 3D model
     Model ourModel("assets/models/backpack/backpack.obj");
+
+    // Initialize shadow map
+    ShadowMap shadowMap(1024, 1024);
 
     // Set up view and projection matrices
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 0.1f, 100.0f);
     glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -3.0f));
 
     // Light position
-    glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
+    glm::vec3 lightPos(2.0f, 4.0f, -1.0f);
 
     // Render loop
     while(!glfwWindowShouldClose(window))
     {
         processInput(window);
 
-        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        // 1. First render to depth map
+        shadowMap.bindFramebuffer();
+        glClear(GL_DEPTH_BUFFER_BIT);
+
+        shadowShader.use();
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::rotate(model, (float)glfwGetTime(), glm::vec3(0.0f, 1.0f, 0.0f));
+        shadowShader.setMat4("lightSpaceMatrix", shadowMap.getLightSpaceMatrix());
+        shadowShader.setMat4("model", model);
+
+        ourModel.Draw(shadowShader);
+
+        shadowMap.unbindFramebuffer();
+
+        // 2. Then render scene as normal
+        glViewport(0, 0, 800, 600);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         shader.use();
         shader.setMat4("projection", projection);
         shader.setMat4("view", view);
-
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::rotate(model, (float)glfwGetTime(), glm::vec3(0.0f, 1.0f, 0.0f));
         shader.setMat4("model", model);
-
+        shader.setMat4("lightSpaceMatrix", shadowMap.getLightSpaceMatrix());
         shader.setVec3("lightPos", lightPos);
         shader.setVec3("viewPos", glm::vec3(0.0f, 0.0f, -3.0f));
+
+        // Bind shadow map
+        shadowMap.bindDepthMap(1);
+        shader.setInt("shadowMap", 1);
 
         ourModel.Draw(shader);
 

@@ -18,6 +18,9 @@ FetchContent_MakeAvailable(glm)
 # Add GLAD
 add_subdirectory(deps/glad)
 
+# Add STB
+add_subdirectory(deps/stb)
+
 add_subdirectory(deps)
 
 file(GLOB_RECURSE sources src/*.cpp src/*.hpp)
@@ -30,6 +33,7 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC ${CMAKE_SOURCE_DIR}/deps/assimp-5.4.3/include
     PUBLIC ${CMAKE_SOURCE_DIR}/deps/glfw-3.4/include
     PUBLIC ${CMAKE_SOURCE_DIR}/deps/glad/include
+    PUBLIC ${CMAKE_SOURCE_DIR}/deps/stb
     PUBLIC ${glm_SOURCE_DIR}
 )
 
@@ -41,6 +45,7 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE glfw
     PRIVATE assimp
     PRIVATE glad
+    PRIVATE stb
     PRIVATE OpenGL::GL
     PRIVATE glm::glm
 )
